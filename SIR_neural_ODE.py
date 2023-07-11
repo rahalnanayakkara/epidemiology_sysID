@@ -21,7 +21,7 @@ def generate_SIR_data(model, num_steps):
 
 # setting up SIR reference data
 num_hosts = 5
-num_steps = 10
+num_steps = 20
 dt = 0.05
 
 beta = 0.1
@@ -36,15 +36,16 @@ SIR_data, time_data = generate_SIR_data(SIR_stepper, num_steps)
 
 
 # build model and fit it
-model = nUIV_NODE(num_hosts)
-num_epochs = 100
+device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+model = nUIV_NODE(num_hosts).to(device)
+num_epochs = 200
 optimizer = optim.Adam(model.parameters(), lr=0.01)
 loss_function = nn.MSELoss()
 
 for epoch in range(num_epochs):
     optimizer.zero_grad()
-    SIR_est = model.simulate(time_data)
-    loss = loss_function(SIR_est, SIR_data)
+    SIR_est = model.simulate(time_data.to(device))
+    loss = loss_function(SIR_est, SIR_data.to(device))
     loss_val = loss.item()
     loss.backward()
     optimizer.step()
@@ -53,3 +54,5 @@ for epoch in range(num_epochs):
 
 print(model.nUIV_x0)
 print(model.nUIV_dynamics.ts)
+
+# TODO: Write testing block to visualize the quality of the fit ODE
