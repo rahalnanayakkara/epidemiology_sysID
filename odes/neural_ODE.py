@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from torchdiffeq import odeint_adjoint
+from torchdiffeq import odeint_adjoint as odeint
+# from torchdiffeq import odeint
 
 
 class squared_parametrization(nn.Module):
@@ -26,7 +27,7 @@ class nUIV_rhs(nn.Module):
     def __init__(self, N: int):
         super(nUIV_rhs, self).__init__()
         self.N = N
-        self.parametrization = abs_parametrization()
+        self.parametrization = squared_parametrization()
         self.betas = nn.Parameter(torch.rand((self.N,)))
         self.deltas = nn.Parameter(torch.rand((self.N,)))
         self.cs = nn.Parameter(torch.rand((self.N,)))
@@ -73,6 +74,15 @@ class soft_threshold(nn.Module):
             SIR_host[i] = 1.0/(1.0 + torch.exp(-self.slope[i]*(SIR_host[i]-self.threshold[i])))
         return SIR_host
 
+    def get_params(self):
+        params = dict()
+        params['weight'] = self.W.weight.detach().numpy()
+        params['bias'] = self.W.bias.detach().numpy()
+        for i in range(3):
+            params['threshold_'+str(i)] = {'slope': self.slope[i].detach().numpy(),
+                                           'threshold': self.threshold[i].detach().numpy()}
+        return params
+
 
 class nUIV_NODE(nn.Module):
     def __init__(self, num_hosts: int):
@@ -83,7 +93,7 @@ class nUIV_NODE(nn.Module):
         self.nUIV_to_SIR = soft_threshold()
 
     def simulate(self, times):
-        solution = odeint_adjoint(self.nUIV_dynamics, self.nUIV_x0.abs(), times)
+        solution = odeint(self.nUIV_dynamics, self.nUIV_x0.abs(), times, method='rk4')
         device = times.device
         SIR = torch.zeros(3, len(times)).to(device)
         for t in range(len(times)):
@@ -94,9 +104,11 @@ class nUIV_NODE(nn.Module):
     def get_params(self):
         params = dict()
         with torch.no_grad():
-            params['beta'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.betas.values)
-            params['delta'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.deltas.values)
-            params['p'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.ps.values)
-            params['c'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.cs.values)
-            params['t'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.ts.values)
-            params['x0'] = self.nUIV_dynamics.parametrization(self.nUIV_x0.values)
+            params['beta'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.betas).detach().numpy()
+            params['delta'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.deltas).detach().numpy()
+            params['p'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.ps).detach().numpy()
+            params['c'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.cs).detach().numpy()
+            params['t'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.ts).detach().numpy()
+            params['x0'] = self.nUIV_dynamics.parametrization(self.nUIV_x0).detach().numpy()
+            params['nUIV_to_SIR'] = self.nUIV_to_SIR.get_params()
+        return params

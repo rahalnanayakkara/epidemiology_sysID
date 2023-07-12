@@ -32,7 +32,13 @@ class integrator:
 
     def reset(self, x0=None, t0=None):
         if x0 is not None:
+            self.x = x0
+        else:
+            print('Resetting to stored initial state.')
             self.x = self.x0
         if t0 is not None:
             self.t = t0
+        else:
+            print('Resetting to t=0.0.')
+            self.t = 0.0
         return self.x
