@@ -23,7 +23,7 @@ def generate_SIR_data(model, num_steps):
 
 # setting up SIR reference data
 num_hosts = 5
-num_steps = 200
+num_steps = 250
 dt = 0.01
 torch.manual_seed(0)
 
@@ -39,8 +39,10 @@ SIR_train_data, time_train_data = generate_SIR_data(SIR_stepper, num_steps)
 
 
 # build model and fit it
+method = 'rk4'
+step_size = dt/2.0
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-model = nUIV_NODE(num_hosts, method='rk4').to(device)
+model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
 num_epochs = 200
 optimizer = optim.Adam(model.parameters(), lr=1e-2, weight_decay=0.0)
 loss_function = nn.L1Loss()
@@ -54,7 +56,7 @@ for epoch in range(num_epochs):
     optimizer.step()
 
     print(f'Epoch {epoch}, loss value: {loss_val}.')
-    if loss_val == 'nan':
+    if loss_val == float('nan'):
         raise ValueError('Found NaN loss, exiting...')
 
 print(model.nUIV_x0)

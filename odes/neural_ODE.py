@@ -70,7 +70,7 @@ class soft_threshold(nn.Module):
 
     def forward(self, UIV_host):
         # SIR_host = UIV_host  # self.W(UIV_host)
-        SIR_host = torch.zeros(3)
+        SIR_host = torch.zeros(3, device=UIV_host.device)
         for i in range(3):
             # SIR_host[i] = 1.0/(1.0 + torch.exp(-self.slope[i]*(SIR_host[i]-self.threshold[i])))
             SIR_host[i] = 1.0/(1.0 + torch.exp(-self.slope[i]*(UIV_host[i]-self.threshold[i])))
@@ -95,12 +95,12 @@ class nUIV_NODE(nn.Module):
         self.nUIV_dynamics = nUIV_rhs(self.num_hosts)  # initialize a random nUIV
         self.nUIV_to_SIR = soft_threshold()
         self.method = kwargs.pop('method', 'rk4')
+        self.step_size = kwargs.pop('step_size', None)
 
     def simulate(self, times):
         solution = odeint(self.nUIV_dynamics, self.nUIV_dynamics.parametrization(self.nUIV_x0),
-                          times, method=self.method)
-        device = times.device
-        SIR = torch.zeros(3, len(times)).to(device)
+                          times, method=self.method, options=dict(step_size=self.step_size)).to(times.device)
+        SIR = torch.zeros(3, len(times), device=times.device)
         for t in range(len(times)):
             for i in range(self.num_hosts):
                 SIR[:, t] += self.nUIV_to_SIR(solution[t, 3*i:3*i+3])
