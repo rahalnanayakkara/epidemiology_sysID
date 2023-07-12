@@ -41,7 +41,7 @@ with open(save_file, 'rb') as f:
     params = pickle.load(f)
 
 dt = 0.001
-num_steps = 2000
+num_steps = 5000
 time = np.zeros(num_steps,)
 
 # LOADING SIR MODEL PARAMETERS
