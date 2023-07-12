@@ -40,9 +40,9 @@ SIR_train_data, time_train_data = generate_SIR_data(SIR_stepper, num_steps)
 
 # build model and fit it
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-model = nUIV_NODE(num_hosts).to(device)
+model = nUIV_NODE(num_hosts, method='rk4').to(device)
 num_epochs = 200
-optimizer = optim.Adam(model.parameters(), lr=1e-1, weight_decay=0.0)
+optimizer = optim.Adam(model.parameters(), lr=5e-3, weight_decay=0.0)
 loss_function = nn.L1Loss()
 
 for epoch in range(num_epochs):
@@ -54,6 +54,8 @@ for epoch in range(num_epochs):
     optimizer.step()
 
     print(f'Epoch {epoch}, loss value: {loss_val}.')
+    if loss_val == 'nan':
+        raise ValueError('Found NaN loss, exiting...')
 
 print(model.nUIV_x0)
 print(model.nUIV_dynamics.ts)
@@ -75,7 +77,7 @@ with open(filename, 'wb') as f:
 # First, reset the SIR model, change its time step
 SIR_stepper.reset()
 SIR_stepper.dt = 0.001
-num_steps = 2000
+num_steps = 5000
 SIR_test_data, time_test_data = generate_SIR_data(SIR_stepper, num_steps)
 
 with torch.no_grad():
