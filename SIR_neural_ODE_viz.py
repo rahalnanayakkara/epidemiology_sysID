@@ -10,6 +10,7 @@ class soft_threshold:
     def __init__(self, **kwargs):
         self.slope = kwargs.pop('slope', 10.0)
         self.threshold = kwargs.pop('threshold', 0.0)
+        print(f'initialized st w slope {self.slope} thresh {self.threshold}')
 
     def __call__(self, x):
         return 1.0/(1.0 + np.exp(-self.slope*(x-self.threshold)))
@@ -28,9 +29,10 @@ class nUIV_to_SIR:
     def __call__(self, nUIV):
         SIR = np.zeros(3,)
         for i in range(self.num_hosts):
-            z = self.W @ nUIV[3*i:3*i+3] + self.b
+            z = np.zeros(3,)
             for j in range(3):
-                SIR[j] += self.thresholds[j](z[j])
+                z[j] = self.thresholds[j](nUIV[3*i:3*i+3][j])
+            SIR += self.W @ z + self.b
         return SIR/self.num_hosts
 
 

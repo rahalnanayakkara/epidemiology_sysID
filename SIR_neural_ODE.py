@@ -42,7 +42,7 @@ SIR_train_data, time_train_data = generate_SIR_data(SIR_stepper, num_steps)
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = nUIV_NODE(num_hosts, method='rk4').to(device)
 num_epochs = 200
-optimizer = optim.Adam(model.parameters(), lr=5e-3, weight_decay=0.0)
+optimizer = optim.Adam(model.parameters(), lr=1e-2, weight_decay=0.0)
 loss_function = nn.L1Loss()
 
 for epoch in range(num_epochs):
