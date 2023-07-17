@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 import pickle
 
 
@@ -22,15 +23,15 @@ def generate_SIR_data(model, num_steps):
 
 
 # setting up SIR reference data
-num_hosts = 5
-num_steps = 250
+num_hosts = 6
+num_steps = 500
 dt = 0.01
 torch.manual_seed(0)
 
 beta = 0.1
 gamma = 0.99
 SIR_ODE = SIR(num_hosts, beta, gamma)
-SIR_x0 = np.array([1.0, 1.0, 1.0])/3.
+SIR_x0 = np.array([0.9, 0.1, 0.0])
 
 
 # generate data
@@ -39,19 +40,37 @@ SIR_train_data, time_train_data = generate_SIR_data(SIR_stepper, num_steps)
 
 
 # build model and fit it
-method = 'rk4'
+method = 'euler'
 step_size = dt/2.0
+# build model and fit it
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
-num_epochs = 200
-optimizer = optim.Adam(model.parameters(), lr=1e-2, weight_decay=0.0)
+num_epochs = 500
+optimizer = optim.Adam(model.parameters(), lr=5e-2, weight_decay=0.0)
 loss_function = nn.L1Loss()
+loss_plotting = False
+
+ltrackx = [0.0]
+ltracky = [1e-5]
+if loss_plotting:
+    lfig, lax = plt.subplots()
+    lax.set_yscale('log')
+    lplot, = lax.plot(ltrackx, ltracky)
+    lfig.canvas.draw()
+    lfig.canvas.flush_events()
+    plt.show()
 
 for epoch in range(num_epochs):
     optimizer.zero_grad()
-    SIR_est = model.simulate(time_train_data.to(device))
+    SIR_est = model.simulate(time_train_data.to(device)).to(device)
     loss = loss_function(SIR_est, SIR_train_data.to(device))
     loss_val = loss.item()
+    if loss_plotting:
+        ltrackx.append(epoch+1)
+        ltracky.append(loss_val)
+        lplot.set_data(ltrackx, ltracky)
+        lfig.canvas.draw()
+        lfig.canvas.flush_events()
     loss.backward()
     optimizer.step()
 
@@ -70,8 +89,10 @@ SIR_params = {'beta': beta,
 
 sim_params = {'SIR': SIR_params,
               'nUIV': nUIV_params}
-
-filename = './tmp/params.p'
+path = './tmp/'
+if not os.path.exists(path):
+    os.mkdir(path)
+filename = os.path.join(path, 'params.p')
 with open(filename, 'wb') as f:
     pickle.dump(sim_params, f)
 

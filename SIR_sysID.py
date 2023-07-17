@@ -69,10 +69,10 @@ nUIV_stepper = integrator(nUIV_ODE, nUIV_x0, dt)
 nUIV_states = np.zeros((3*num_hosts, num_steps))
 nUIV_states[:, 0] = nUIV_x0
 
-beta = 0.01
-gamma = 0.999
+beta = 100
+gamma = 1
 SIR_ODE = SIR(num_hosts, beta, gamma)
-SIR_x0 = np.array([1.0, 1.0, 1.0])/3.
+SIR_x0 = np.array([0.9, 0.1, 0.0])
 
 
 SIR_stepper = integrator(SIR_ODE, SIR_x0, dt)
