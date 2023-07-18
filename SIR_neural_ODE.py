@@ -23,15 +23,16 @@ def generate_SIR_data(model, num_steps):
 
 
 # setting up SIR reference data
-num_hosts = 6
+num_hosts = 7
 num_steps = 500
 dt = 0.01
 torch.manual_seed(0)
 
-beta = 0.1
-gamma = 0.99
+time_scale = 3.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+beta = time_scale*0.95  # infection rate
+gamma = time_scale*1.0  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
-SIR_x0 = np.array([0.9, 0.1, 0.0])
+SIR_x0 = np.array([0.5, 0.3, 0.2])
 
 
 # generate data
@@ -45,37 +46,20 @@ step_size = dt/2.0
 # build model and fit it
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
-num_epochs = 500
+num_epochs = 100
 optimizer = optim.Adam(model.parameters(), lr=5e-2, weight_decay=0.0)
 loss_function = nn.L1Loss()
-loss_plotting = False
-
-ltrackx = [0.0]
-ltracky = [1e-5]
-if loss_plotting:
-    lfig, lax = plt.subplots()
-    lax.set_yscale('log')
-    lplot, = lax.plot(ltrackx, ltracky)
-    lfig.canvas.draw()
-    lfig.canvas.flush_events()
-    plt.show()
 
 for epoch in range(num_epochs):
     optimizer.zero_grad()
     SIR_est = model.simulate(time_train_data.to(device)).to(device)
     loss = loss_function(SIR_est, SIR_train_data.to(device))
     loss_val = loss.item()
-    if loss_plotting:
-        ltrackx.append(epoch+1)
-        ltracky.append(loss_val)
-        lplot.set_data(ltrackx, ltracky)
-        lfig.canvas.draw()
-        lfig.canvas.flush_events()
     loss.backward()
     optimizer.step()
 
     print(f'Epoch {epoch}, loss value: {loss_val}.')
-    if loss_val == float('nan'):
+    if torch.isnan(loss):
         raise ValueError('Found NaN loss, exiting...')
 
 print(model.nUIV_x0)
@@ -89,7 +73,7 @@ SIR_params = {'beta': beta,
 
 sim_params = {'SIR': SIR_params,
               'nUIV': nUIV_params}
-path = './tmp/'
+path = '/content/tmp/'
 if not os.path.exists(path):
     os.mkdir(path)
 filename = os.path.join(path, 'params.p')
@@ -100,12 +84,12 @@ with open(filename, 'wb') as f:
 # First, reset the SIR model, change its time step
 SIR_stepper.reset()
 SIR_stepper.dt = 0.001
-num_steps = 5000
+num_steps = 10000
 SIR_test_data, time_test_data = generate_SIR_data(SIR_stepper, num_steps)
 
 with torch.no_grad():
-    SIR_train_data_est = model.simulate(time_train_data.to(device)).detach()
-    SIR_test_data_est = model.simulate(time_test_data.to(device)).detach()
+    SIR_train_data_est = model.simulate(time_train_data.to(device)).detach().cpu().numpy()
+    SIR_test_data_est = model.simulate(time_test_data.to(device)).detach().cpu().numpy()
 
 f, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8))
 names = ['S', 'I', 'R']
@@ -122,5 +106,9 @@ ax2.grid()
 ax1.legend()
 ax2.legend()
 f.tight_layout()
-f.savefig('./tmp/last_run_pytorch.png')
+path = './tmp/'
+if not os.path.exists(path):
+    os.mkdir(path)
+filename = os.path.join(path, 'last_run_pytorch.png')
+f.savefig(filename)
 plt.show()

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from torchdiffeq import odeint_adjoint as odeint
-# from torchdiffeq import odeint
+# from torchdiffeq import odeint_adjoint as odeint
+from torchdiffeq import odeint
 
 
 class squared_parametrization(nn.Module):
@@ -33,10 +33,11 @@ class nUIV_rhs(nn.Module):
         self.cs = nn.Parameter(torch.rand((self.N,)))
         self.ps = nn.Parameter(torch.rand((self.N,)))
         self.ts = nn.Parameter(torch.rand((self.N, self.N))*0.5)
-        self.normalization = torch.ones((self.N,))  # for projecting onto constraints
+        # elf.normalization = torch.ones((self.N,))  # for projecting onto constraints
 
     def forward(self, t, state):
         rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
+        normalization = self.compute_normalization()
 
         for n in range(self.N):
             U, I, V = state[3*n], state[3*n+1], state[3*n+2]  # re-naming host state for convenience
@@ -50,19 +51,21 @@ class nUIV_rhs(nn.Module):
             rhs[3*n + 2] = p*I - c*V - self.parametrization(self.ts[n, n])  # V dynamics
 
             # add transmission between neighbors (including self)
-            # normalize so that total exhale is bounded
+            # normalize so that total intake is bounded by
             for nbr in range(n):
-                rhs[3*n + 2] += self.normalization[nbr]*self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
+                rhs[3*n + 2] += normalization[nbr]*self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
             for nbr in range(n+1, self.N):
-                rhs[3*n + 2] += self.normalization[nbr]*self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
+                rhs[3*n + 2] += normalization[nbr]*self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
 
         return rhs
 
     def compute_normalization(self):
+        normalization = torch.zeros_like(self.betas)
         for n in range(self.N):
-            self.normalization[n] = torch.min(self.parametrization(self.ts[n, n]) /
-                                              (torch.sum(self.parametrization(self.ts[n, :n]))
-                                               + torch.sum(self.parametrization(self.ts[n, n+1:]))), torch.tensor(1.0))
+            normalization[n] = torch.min(self.parametrization(self.ts[n, n]) /
+                                         (torch.sum(self.parametrization(self.ts[n, :]))
+                                          - self.parametrization(self.ts[n, n])), torch.tensor(1.0))
+        return normalization
 
     def normalize_ts(self):
         self.compute_normalization()
@@ -115,7 +118,6 @@ class nUIV_NODE(nn.Module):
         self.step_size = kwargs.pop('step_size', None)
 
     def simulate(self, times):
-        self.nUIV_dynamics.compute_normalization()  # first, normalize ts to satisfy inhale-exhale constraints
         solution = odeint(self.nUIV_dynamics, self.nUIV_dynamics.parametrization(self.nUIV_x0),
                           times, method=self.method, options=dict(step_size=self.step_size)).to(times.device)
         SIR = torch.zeros(3, len(times), device=times.device)
