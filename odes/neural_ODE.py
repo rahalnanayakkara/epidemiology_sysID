@@ -33,6 +33,7 @@ class nUIV_rhs(nn.Module):
         self.cs = nn.Parameter(torch.rand((self.N,)))
         self.ps = nn.Parameter(torch.rand((self.N,)))
         self.ts = nn.Parameter(torch.rand((self.N, self.N))*0.5)
+        self.normalization = torch.ones((self.N,))  # for projecting onto constraints
 
     def forward(self, t, state):
         rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
@@ -49,12 +50,25 @@ class nUIV_rhs(nn.Module):
             rhs[3*n + 2] = p*I - c*V - self.parametrization(self.ts[n, n])  # V dynamics
 
             # add transmission between neighbors (including self)
+            # normalize so that total exhale is bounded
             for nbr in range(n):
-                rhs[3*n + 2] += self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
+                rhs[3*n + 2] += self.normalization[nbr]*self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
             for nbr in range(n+1, self.N):
-                rhs[3*n + 2] += self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
+                rhs[3*n + 2] += self.normalization[nbr]*self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
 
         return rhs
+
+    def compute_normalization(self):
+        for n in range(self.N):
+            self.normalization[n] = torch.min(self.parametrization(self.ts[n, n]) /
+                                              (torch.sum(self.parametrization(self.ts[n, :n]))
+                                               + torch.sum(self.parametrization(self.ts[n, n+1:]))), torch.tensor(1.0))
+
+    def normalize_ts(self):
+        self.compute_normalization()
+        for n in range(self.N):
+            self.ts[n, :n] *= self.normalization[n]
+            self.ts[n, n+1:] *= self.normalization[n]
 
 
 class soft_threshold(nn.Module):
@@ -62,11 +76,12 @@ class soft_threshold(nn.Module):
     function for mapping from a single host's UIV state to their SIR state.
     Currently defined as a linear map plus a soft-thresholding operator.
     '''
-    def __init__(self):
+    def __init__(self, bias=False, nonlinearity=False):
         super().__init__()
-        self.W = nn.Linear(3, 3, bias=False)  # linear map
-        self.slope = nn.ParameterList([torch.tensor(10.0)+torch.rand(1) for i in range(3)])
-        self.threshold = nn.ParameterList([torch.rand(1) for i in range(3)])
+        self.W = nn.Linear(3, 3, bias=bias)  # linear map
+        if nonlinearity:
+            self.slope = nn.ParameterList([torch.tensor(10.0)+torch.rand(1) for i in range(3)])
+            self.threshold = nn.ParameterList([torch.rand(1) for i in range(3)])
 
     def forward(self, UIV_host):
         # SIR_host = UIV_host  # self.W(UIV_host)
@@ -80,10 +95,12 @@ class soft_threshold(nn.Module):
     def get_params(self):
         params = dict()
         params['weight'] = self.W.weight.detach().cpu().numpy()
-        params['bias'] = self.W.bias.detach().cpu().numpy()
-        for i in range(3):
-            params['threshold_'+str(i)] = {'slope': self.slope[i].detach().cpu().numpy(),
-                                           'threshold': self.threshold[i].detach().cpu().numpy()}
+        if hasattr(self.W, 'bias'):
+            params['bias'] = self.W.bias.detach().cpu().numpy()
+        if hasattr(self, 'slope'):
+            for i in range(3):
+                params['threshold_'+str(i)] = {'slope': self.slope[i].detach().cpu().numpy(),
+                                               'threshold': self.threshold[i].detach().cpu().numpy()}
         return params
 
 
@@ -98,6 +115,7 @@ class nUIV_NODE(nn.Module):
         self.step_size = kwargs.pop('step_size', None)
 
     def simulate(self, times):
+        self.nUIV_dynamics.compute_normalization()  # first, normalize ts to satisfy inhale-exhale constraints
         solution = odeint(self.nUIV_dynamics, self.nUIV_dynamics.parametrization(self.nUIV_x0),
                           times, method=self.method, options=dict(step_size=self.step_size)).to(times.device)
         SIR = torch.zeros(3, len(times), device=times.device)
@@ -109,6 +127,7 @@ class nUIV_NODE(nn.Module):
     def get_params(self):
         params = dict()
         with torch.no_grad():
+            self.nUIV_dynamics.normalize_ts()
             params['beta'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.betas).detach().cpu().numpy()
             params['delta'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.deltas).detach().cpu().numpy()
             params['p'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.ps).detach().cpu().numpy()
