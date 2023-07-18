@@ -68,10 +68,10 @@ class nUIV_rhs(nn.Module):
         return normalization
 
     def normalize_ts(self):
-        self.compute_normalization()
+        normalization = self.compute_normalization()
         for n in range(self.N):
-            self.ts[n, :n] *= self.normalization[n]
-            self.ts[n, n+1:] *= self.normalization[n]
+            self.ts[n, :n] *= normalization[n]
+            self.ts[n, n+1:] *= normalization[n]
 
 
 class soft_threshold(nn.Module):
