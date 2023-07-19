@@ -28,12 +28,11 @@ class nUIV_rhs(nn.Module):
         super(nUIV_rhs, self).__init__()
         self.N = N
         self.parametrization = squared_parametrization()
-        self.betas = nn.Parameter(torch.rand((self.N,)))
-        self.deltas = nn.Parameter(torch.rand((self.N,)))
-        self.cs = nn.Parameter(torch.rand((self.N,)))
-        self.ps = nn.Parameter(torch.rand((self.N,)))
-        self.ts = nn.Parameter(torch.rand((self.N, self.N))*0.5)
-        # elf.normalization = torch.ones((self.N,))  # for projecting onto constraints
+        self.betas = nn.Parameter(self.parametrization(torch.rand((self.N,))))
+        self.deltas = nn.Parameter(self.parametrization(torch.rand((self.N,))))
+        self.cs = nn.Parameter(self.parametrization(torch.rand((self.N,))))
+        self.ps = nn.Parameter(self.parametrization(torch.rand((self.N,))))
+        self.ts = nn.Parameter(self.parametrization(torch.eye(self.N) + torch.rand((self.N, self.N))/2.0))
 
     def forward(self, t, state):
         rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
@@ -42,7 +41,7 @@ class nUIV_rhs(nn.Module):
         rhs[1::3] = self.parametrization(self.betas)*state[::3]*state[2::3] \
             - self.parametrization(self.deltas)*state[1::3]
         rhs[2::3] = self.parametrization(self.ps)*state[1::3] - self.parametrization(self.cs)*state[2::3] \
-            - 2.0*normalization*self.parametrization(torch.diag(self.ts))*state[2::3]
+            - (1.0 + normalization)*self.parametrization(torch.diag(self.ts))*state[2::3]
         rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.parametrization(self.ts)))
         return rhs
 
@@ -108,9 +107,7 @@ class nUIV_NODE(nn.Module):
         solution = odeint(self.nUIV_dynamics, self.nUIV_dynamics.parametrization(self.nUIV_x0),
                           times, method=self.method, options=dict(step_size=self.step_size)).to(times.device)
         SIR = torch.zeros(3, len(times), device=times.device)
-        for t in range(len(times)):
-            for i in range(self.num_hosts):
-                SIR[:, t] += self.nUIV_to_SIR(solution[t, 3*i:3*i+3])
+        SIR = torch.sum(self.nUIV_to_SIR(torch.reshape(solution, (len(times), self.num_hosts, 3))), axis=1).T
         return SIR/self.num_hosts
 
     def get_params(self):

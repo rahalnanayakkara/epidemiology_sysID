@@ -23,7 +23,7 @@ def generate_SIR_data(model, num_steps):
 
 
 # setting up SIR reference data
-num_hosts = 10
+num_hosts = 5
 num_steps = 500
 dt = 0.01
 torch.manual_seed(0)
@@ -48,7 +48,7 @@ device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
 num_epochs = 200
 optimizer = optim.Adam(model.parameters(), lr=1e-1, weight_decay=0.0)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.25, patience=8, verbose=True)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=10, verbose=True)
 loss_function = nn.L1Loss()
 
 for epoch in range(num_epochs):
