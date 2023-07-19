@@ -2,7 +2,7 @@ from odes.models import SIR
 from odes.integrator import integrator
 from odes.neural_ODE import nUIV_NODE
 import torch
-import torch.nn as nn
+# import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,15 +22,19 @@ def generate_SIR_data(model, num_steps):
     return y, t
 
 
+def lp_norm_loss(y, yhat, p=2):
+    return torch.norm(y-yhat, p=p)
+
+
 # setting up SIR reference data
-num_hosts = 5
+num_hosts = 50
 num_steps = 500
 dt = 0.01
-torch.manual_seed(0)
+torch.manual_seed(666)
 
-time_scale = 12.0  # can make time "move faster" by scaling these constants beyond [0, 1]
-beta = time_scale*0.999  # infection rate
-gamma = time_scale*0.1  # recovery rate
+time_scale = 75.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+beta = time_scale*0.9  # infection rate
+gamma = time_scale*0.01  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
 SIR_x0 = np.array([0.3, 0.5, 0.2])
 
@@ -46,10 +50,10 @@ step_size = dt/2.0
 # build model and fit it
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
-num_epochs = 200
+num_epochs = 500
 optimizer = optim.Adam(model.parameters(), lr=1e-1, weight_decay=0.0)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=10, verbose=True)
-loss_function = nn.L1Loss()
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=10, verbose=True)
+loss_function = lambda y, yhat: lp_norm_loss(y, yhat, p=4)  # nn.L1Loss()
 
 for epoch in range(num_epochs):
     optimizer.zero_grad()
@@ -85,6 +89,19 @@ if not os.path.exists(path):
 filename = os.path.join(path, 'params.p')
 with open(filename, 'wb') as f:
     pickle.dump(sim_params, f)
+
+np.set_printoptions(threshold=np.inf)
+filename = os.path.join(path, 'params.txt')
+with open(filename, 'w') as f:
+    f.write('SIMULATION PARAMATERS:\n')
+    for key, value in sim_params.items():
+        f.write(f'{key} : {value}\n')
+    f.write('SIR MODEL PARAMETERS\n')
+    for key, value in SIR_params.items():
+        f.write(f'{key} : {value}\n')
+    f.write('NUIV MODEL PARAMETERS\n')
+    for key, value in nUIV_params.items():
+        f.write(f'{key} : {value}\n')
 
 # TODO: Write testing block to visualize the quality of the fit ODE
 # First, reset the SIR model, change its time step

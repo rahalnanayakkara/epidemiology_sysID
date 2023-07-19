@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.utils.parametrize as P
 # from torchdiffeq import odeint_adjoint as odeint
 from torchdiffeq import odeint
 
@@ -27,30 +28,32 @@ class nUIV_rhs(nn.Module):
     def __init__(self, N: int):
         super(nUIV_rhs, self).__init__()
         self.N = N
+        self.betas = nn.Parameter(torch.rand((self.N,)))
+        self.deltas = nn.Parameter(torch.rand((self.N,)))
+        self.cs = nn.Parameter(torch.rand((self.N,)))
+        self.ps = nn.Parameter(torch.rand((self.N,)))
+        self.ts = nn.Parameter(torch.eye(self.N) + torch.rand((self.N, self.N))/2.0)
         self.parametrization = squared_parametrization()
-        self.betas = nn.Parameter(self.parametrization(torch.rand((self.N,))))
-        self.deltas = nn.Parameter(self.parametrization(torch.rand((self.N,))))
-        self.cs = nn.Parameter(self.parametrization(torch.rand((self.N,))))
-        self.ps = nn.Parameter(self.parametrization(torch.rand((self.N,))))
-        self.ts = nn.Parameter(self.parametrization(torch.eye(self.N) + torch.rand((self.N, self.N))/2.0))
+        P.register_parametrization(self, 'betas', self.parametrization)
+        P.register_parametrization(self, 'deltas', self.parametrization)
+        P.register_parametrization(self, 'cs', self.parametrization)
+        P.register_parametrization(self, 'ps', self.parametrization)
+        P.register_parametrization(self, 'ts', self.parametrization)
 
     def forward(self, t, state):
         rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
         normalization = self.compute_normalization()
-        rhs[::3] = -self.parametrization(self.betas)*state[::3]*state[2::3]
-        rhs[1::3] = self.parametrization(self.betas)*state[::3]*state[2::3] \
-            - self.parametrization(self.deltas)*state[1::3]
-        rhs[2::3] = self.parametrization(self.ps)*state[1::3] - self.parametrization(self.cs)*state[2::3] \
-            - (1.0 + normalization)*self.parametrization(torch.diag(self.ts))*state[2::3]
-        rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.parametrization(self.ts)))
+        rhs[::3] = -self.betas*state[::3]*state[2::3]
+        rhs[1::3] = self.betas*state[::3]*state[2::3] - self.deltas*state[1::3]
+        rhs[2::3] = self.ps*state[1::3] - self.cs*state[2::3] \
+            - (1.0 + normalization)*torch.diag(self.ts)*state[2::3]
+        rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
         return rhs
 
     def compute_normalization(self):
         normalization = torch.zeros_like(self.betas)
-        normalization = torch.min(self.parametrization(torch.diag(self.ts)) /
-                                  (torch.sum(self.parametrization(self.ts), axis=1)
-                                   - torch.diag(self.parametrization(self.ts))),
-                                  torch.tensor(1.0))
+        normalization = torch.min(torch.diag(self.ts) / (torch.sum(self.ts, axis=1)
+                                  - torch.diag(self.ts)), torch.tensor(1.0))
         return normalization
 
     def normalize_ts(self):
@@ -100,11 +103,15 @@ class nUIV_NODE(nn.Module):
         self.nUIV_x0 = nn.Parameter(torch.rand(3*self.num_hosts))  # initialize a random initial state
         self.nUIV_dynamics = nUIV_rhs(self.num_hosts)  # initialize a random nUIV
         self.nUIV_to_SIR = soft_threshold()
+
+        self.parametrization = squared_parametrization()
+        P.register_parametrization(self, 'nUIV_x0', self.parametrization)
+
         self.method = kwargs.pop('method', 'rk4')
         self.step_size = kwargs.pop('step_size', None)
 
     def simulate(self, times):
-        solution = odeint(self.nUIV_dynamics, self.nUIV_dynamics.parametrization(self.nUIV_x0),
+        solution = odeint(self.nUIV_dynamics, self.nUIV_x0,
                           times, method=self.method, options=dict(step_size=self.step_size)).to(times.device)
         SIR = torch.zeros(3, len(times), device=times.device)
         SIR = torch.sum(self.nUIV_to_SIR(torch.reshape(solution, (len(times), self.num_hosts, 3))), axis=1).T
@@ -114,11 +121,11 @@ class nUIV_NODE(nn.Module):
         params = dict()
         with torch.no_grad():
             self.nUIV_dynamics.normalize_ts()
-            params['beta'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.betas).detach().cpu().numpy()
-            params['delta'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.deltas).detach().cpu().numpy()
-            params['p'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.ps).detach().cpu().numpy()
-            params['c'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.cs).detach().cpu().numpy()
-            params['t'] = self.nUIV_dynamics.parametrization(self.nUIV_dynamics.ts).detach().cpu().numpy()
-            params['x0'] = self.nUIV_dynamics.parametrization(self.nUIV_x0).detach().cpu().numpy()
+            params['beta'] = self.nUIV_dynamics.betas.detach().cpu().numpy()
+            params['delta'] = self.nUIV_dynamics.deltas.detach().cpu().numpy()
+            params['p'] = self.nUIV_dynamics.ps.detach().cpu().numpy()
+            params['c'] = self.nUIV_dynamics.cs.detach().cpu().numpy()
+            params['t'] = self.nUIV_dynamics.ts.detach().cpu().numpy()
+            params['x0'] = self.nUIV_x0.detach().cpu().numpy()
             params['nUIV_to_SIR'] = self.nUIV_to_SIR.get_params()
         return params
