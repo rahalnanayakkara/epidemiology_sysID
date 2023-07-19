@@ -38,18 +38,12 @@ class nUIV_rhs(nn.Module):
     def forward(self, t, state):
         rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
         normalization = self.compute_normalization()
-
-        for n in range(self.N):
-            U, I, V = state[3*n], state[3*n+1], state[3*n+2]  # re-naming host state for convenience
-            beta = self.parametrization(self.betas[n])
-            delta = self.parametrization(self.deltas[n])
-            p = self.parametrization(self.ps[n])
-            c = self.parametrization(self.cs[n])
-
-            rhs[3*n] = - beta * U * V  # U dynamics
-            rhs[3*n + 1] = beta * U * V - delta * I  # I dynamics
-            rhs[3*n + 2] = p*I - c*V - 2.0*normalization[n]*self.parametrization(self.ts[n, n])*V  # V dynamics
-            rhs[3*n + 2] += torch.dot(self.parametrization(self.ts[:, n]) * normalization, state[2::3])
+        rhs[::3] = -self.parametrization(self.betas)*state[::3]*state[2::3]
+        rhs[1::3] = self.parametrization(self.betas)*state[::3]*state[2::3] \
+            - self.parametrization(self.deltas)*state[1::3]
+        rhs[2::3] = self.parametrization(self.ps)*state[1::3] - self.parametrization(self.cs)*state[2::3] \
+            - 2.0*normalization*self.parametrization(torch.diag(self.ts))*state[2::3]
+        rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.parametrization(self.ts)))
         return rhs
 
     def compute_normalization(self):
