@@ -48,8 +48,7 @@ class nUIV_rhs(nn.Module):
 
             rhs[3*n] = - beta * U * V  # U dynamics
             rhs[3*n + 1] = beta * U * V - delta * I  # I dynamics
-            rhs[3*n + 2] = p*I - c*V - normalization[n]*self.parametrization(self.ts[n, n])*V  # V dynamics
-            rhs[3*n + 2] -= normalization[n]*self.parametrization(self.ts[n, n])*V
+            rhs[3*n + 2] = p*I - c*V - 2.0*normalization[n]*self.parametrization(self.ts[n, n])*V  # V dynamics
             rhs[3*n + 2] += torch.dot(self.parametrization(self.ts[:, n]) * normalization, state[2::3])
         return rhs
 
