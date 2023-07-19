@@ -69,11 +69,11 @@ nUIV_stepper = integrator(nUIV_ODE, nUIV_x0, dt)
 nUIV_states = np.zeros((3*num_hosts, num_steps))
 nUIV_states[:, 0] = nUIV_x0
 
-time_scale = 1.0  # can make time "move faster" by scaling these constants beyond [0, 1]
-beta = time_scale*0.95  # infection rate
-gamma = time_scale*1.0  # recovery rate
+time_scale = 12.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+beta = time_scale*0.999  # infection rate
+gamma = time_scale*0.1  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
-SIR_x0 = np.array([0.5, 0.3, 0.2])
+SIR_x0 = np.array([0.3, 0.5, 0.2])
 
 
 SIR_stepper = integrator(SIR_ODE, SIR_x0, dt)

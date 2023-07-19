@@ -23,16 +23,16 @@ def generate_SIR_data(model, num_steps):
 
 
 # setting up SIR reference data
-num_hosts = 6
+num_hosts = 10
 num_steps = 500
 dt = 0.01
 torch.manual_seed(0)
 
-time_scale = 1.0  # can make time "move faster" by scaling these constants beyond [0, 1]
-beta = time_scale*0.95  # infection rate
-gamma = time_scale*1.0  # recovery rate
+time_scale = 12.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+beta = time_scale*0.999  # infection rate
+gamma = time_scale*0.1  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
-SIR_x0 = np.array([0.5, 0.3, 0.2])
+SIR_x0 = np.array([0.3, 0.5, 0.2])
 
 
 # generate data
@@ -47,8 +47,8 @@ step_size = dt/2.0
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
 num_epochs = 200
-optimizer = optim.Adam(model.parameters(), lr=5e-2, weight_decay=0.0)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5, verbose=True)
+optimizer = optim.Adam(model.parameters(), lr=1e-1, weight_decay=0.0)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.25, patience=8, verbose=True)
 loss_function = nn.L1Loss()
 
 for epoch in range(num_epochs):

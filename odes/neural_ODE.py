@@ -48,23 +48,17 @@ class nUIV_rhs(nn.Module):
 
             rhs[3*n] = - beta * U * V  # U dynamics
             rhs[3*n + 1] = beta * U * V - delta * I  # I dynamics
-            rhs[3*n + 2] = p*I - c*V - self.parametrization(self.ts[n, n])  # V dynamics
-
-            # add transmission between neighbors (including self)
-            # normalize so that total intake is bounded by
-            for nbr in range(n):
-                rhs[3*n + 2] += normalization[nbr]*self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
-            for nbr in range(n+1, self.N):
-                rhs[3*n + 2] += normalization[nbr]*self.parametrization(self.ts[nbr, n])*state[3*nbr+2]
-
+            rhs[3*n + 2] = p*I - c*V - normalization[n]*self.parametrization(self.ts[n, n])*V  # V dynamics
+            rhs[3*n + 2] -= normalization[n]*self.parametrization(self.ts[n, n])*V
+            rhs[3*n + 2] += torch.dot(self.parametrization(self.ts[:, n]) * normalization, state[2::3])
         return rhs
 
     def compute_normalization(self):
         normalization = torch.zeros_like(self.betas)
-        for n in range(self.N):
-            normalization[n] = torch.min(self.parametrization(self.ts[n, n]) /
-                                         (torch.sum(self.parametrization(self.ts[n, :]))
-                                          - self.parametrization(self.ts[n, n])), torch.tensor(1.0))
+        normalization = torch.min(self.parametrization(torch.diag(self.ts)) /
+                                  (torch.sum(self.parametrization(self.ts), axis=1)
+                                   - torch.diag(self.parametrization(self.ts))),
+                                  torch.tensor(1.0))
         return normalization
 
     def normalize_ts(self):
