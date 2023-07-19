@@ -98,7 +98,7 @@ class soft_threshold(nn.Module):
     def get_params(self):
         params = dict()
         params['weight'] = self.W.weight.detach().cpu().numpy()
-        if hasattr(self.W, 'bias'):
+        if self.W.bias is not None:
             params['bias'] = self.W.bias.detach().cpu().numpy()
         if hasattr(self, 'slope'):
             for i in range(3):

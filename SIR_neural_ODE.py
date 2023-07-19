@@ -23,12 +23,12 @@ def generate_SIR_data(model, num_steps):
 
 
 # setting up SIR reference data
-num_hosts = 7
+num_hosts = 6
 num_steps = 500
 dt = 0.01
 torch.manual_seed(0)
 
-time_scale = 3.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+time_scale = 1.0  # can make time "move faster" by scaling these constants beyond [0, 1]
 beta = time_scale*0.95  # infection rate
 gamma = time_scale*1.0  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
@@ -46,8 +46,9 @@ step_size = dt/2.0
 # build model and fit it
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
-num_epochs = 100
+num_epochs = 200
 optimizer = optim.Adam(model.parameters(), lr=5e-2, weight_decay=0.0)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5, verbose=True)
 loss_function = nn.L1Loss()
 
 for epoch in range(num_epochs):
@@ -57,13 +58,14 @@ for epoch in range(num_epochs):
     loss_val = loss.item()
     loss.backward()
     optimizer.step()
+    scheduler.step(loss_val)
 
     print(f'Epoch {epoch}, loss value: {loss_val}.')
     if torch.isnan(loss):
         raise ValueError('Found NaN loss, exiting...')
 
-print(model.nUIV_x0)
-print(model.nUIV_dynamics.ts)
+# print(model.nUIV_x0)
+# print(model.nUIV_dynamics.ts)
 
 nUIV_params = model.get_params()
 SIR_params = {'beta': beta,
@@ -73,7 +75,11 @@ SIR_params = {'beta': beta,
 
 sim_params = {'SIR': SIR_params,
               'nUIV': nUIV_params}
-path = '/content/tmp/'
+
+print(nUIV_params)
+
+path = './tmp/'
+# path = '/content/tmp/'
 if not os.path.exists(path):
     os.mkdir(path)
 filename = os.path.join(path, 'params.p')
@@ -107,6 +113,7 @@ ax1.legend()
 ax2.legend()
 f.tight_layout()
 path = './tmp/'
+# path = '/content/tmp/'
 if not os.path.exists(path):
     os.mkdir(path)
 filename = os.path.join(path, 'last_run_pytorch.png')

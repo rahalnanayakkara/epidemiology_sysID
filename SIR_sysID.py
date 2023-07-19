@@ -61,7 +61,7 @@ for n in G:
 
 nUIV_ODE = nUIV(G)
 
-num_steps = 200
+num_steps = 500
 dt = 0.01
 
 nUIV_x0 = nUIV_ODE.get_graph_state()
@@ -69,7 +69,7 @@ nUIV_stepper = integrator(nUIV_ODE, nUIV_x0, dt)
 nUIV_states = np.zeros((3*num_hosts, num_steps))
 nUIV_states[:, 0] = nUIV_x0
 
-time_scale = 3.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+time_scale = 1.0  # can make time "move faster" by scaling these constants beyond [0, 1]
 beta = time_scale*0.95  # infection rate
 gamma = time_scale*1.0  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
