@@ -93,9 +93,9 @@ with open(filename, 'wb') as f:
 np.set_printoptions(threshold=np.inf)
 filename = os.path.join(path, 'params.txt')
 with open(filename, 'w') as f:
-    f.write('SIMULATION PARAMATERS:\n')
-    for key, value in sim_params.items():
-        f.write(f'{key} : {value}\n')
+    # f.write('SIMULATION PARAMATERS:\n')
+    # for key, value in sim_params.items():
+    #     f.write(f'{key} : {value}\n')
     f.write('SIR MODEL PARAMETERS\n')
     for key, value in SIR_params.items():
         f.write(f'{key} : {value}\n')
