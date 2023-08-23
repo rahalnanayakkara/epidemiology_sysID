@@ -46,19 +46,33 @@ SIR_train_data, time_train_data = generate_SIR_data(SIR_stepper, num_steps)
 
 # build model and fit it
 method = 'euler'
-step_size = dt/2.0
+step_size = 2*dt
 # build model and fit it
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
-num_epochs = 500
+num_epochs = 100
 optimizer = optim.Adam(model.parameters(), lr=1e-1, weight_decay=0.0)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=10, verbose=True)
 loss_function = lambda y, yhat: lp_norm_loss(y, yhat, p=4)  # nn.L1Loss()
 
+UIV_x0_train = torch.zeros(3*num_hosts)
+UIV_x0_train[::3] = 10**9
+UIV_x0_train[2::3] = 10
+#UIV_x0_train = UIV_x0_train.reshape(3,50)
+UIV_x0_train = UIV_x0_train[::3]*UIV_x0_train[2::3]
+UIV_x0_train = UIV_x0_train.T
+com_train = torch.cat((SIR_train_data[1,:],1/5*torch.log10(UIV_x0_train)),dim=0)
+
 for epoch in range(num_epochs):
     optimizer.zero_grad()
     SIR_est = model.simulate(time_train_data.to(device)).to(device)
-    loss = loss_function(SIR_est, SIR_train_data.to(device))
+    UIV_x0_est = model.nUIV_x0
+    #UIV_x0_est = UIV_x0_est.reshape(3,50)
+    UIV_x0_est = UIV_x0_est[::3]*UIV_x0_est[2::3]
+    UIV_x0_est = UIV_x0_est.T
+    com_est = torch.cat((SIR_est[1,:],1/5*torch.log10(UIV_x0_est)),dim=0)
+    loss = loss_function(com_est, com_train.to(device))
+    #loss = loss_function(SIR_est, SIR_train_data.to(device))
     loss_val = loss.item()
     loss.backward()
     optimizer.step()
@@ -117,11 +131,17 @@ with torch.no_grad():
 f, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8))
 names = ['S', 'I', 'R']
 colors = ['red', 'green', 'blue']
+'''
 for i, name in enumerate(names):
     ax1.plot(time_train_data, SIR_train_data[i, :], lw=2, color=colors[i], label=name)
     ax1.plot(time_train_data, SIR_train_data_est[i, :], lw=2, color=colors[i], label=name+' est', linestyle='dashed')
     ax2.plot(time_test_data, SIR_test_data[i, :], lw=2, color=colors[i], label=name)
     ax2.plot(time_test_data, SIR_test_data_est[i, :], lw=2, color=colors[i], label=name+' est', linestyle='dashed')
+'''
+ax1.plot(time_train_data, SIR_train_data[1, :], lw=2, color=colors[1], label=names[1])
+ax1.plot(time_train_data, SIR_train_data_est[1, :], lw=2, color=colors[1], label=names[1]+' est', linestyle='dashed')
+ax2.plot(time_test_data, SIR_test_data[1, :], lw=2, color=colors[1], label=names[1])
+ax2.plot(time_test_data, SIR_test_data_est[1, :], lw=2, color=colors[1], label=names[1]+' est', linestyle='dashed')
 ax1.set_title('Training')
 ax2.set_title('Testing')
 ax1.grid()
