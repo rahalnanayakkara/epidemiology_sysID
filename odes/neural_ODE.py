@@ -9,10 +9,16 @@ class squared_parametrization(nn.Module):
     def forward(self, W):
         return torch.square(W)
 
+    def right_inverse(self, W):
+        return torch.sqrt(W)
+
 
 class abs_parametrization(nn.Module):
     def forward(self, W):
         return torch.abs(W)
+
+    def right_inverse(self, W):
+        return W
 
 
 class nUIV_rhs(nn.Module):
@@ -32,7 +38,7 @@ class nUIV_rhs(nn.Module):
         self.deltas = nn.Parameter(torch.rand((self.N,)))
         self.cs = nn.Parameter(torch.rand((self.N,)))
         self.ps = nn.Parameter(torch.rand((self.N,)))
-        self.ts = nn.Parameter(torch.eye(self.N) + torch.rand((self.N, self.N))/2.0)
+        self.ts = nn.Parameter((torch.eye(self.N) + torch.rand((self.N, self.N)))/2.0)
         self.parametrization = squared_parametrization()
         P.register_parametrization(self, 'betas', self.parametrization)
         P.register_parametrization(self, 'deltas', self.parametrization)
@@ -47,7 +53,7 @@ class nUIV_rhs(nn.Module):
         rhs[1::3] = self.betas*state[::3]*state[2::3] - self.deltas*state[1::3]
         rhs[2::3] = self.ps*state[1::3] - self.cs*state[2::3] \
             - (1.0 + normalization)*torch.diag(self.ts)*state[2::3]
-        rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
+        rhs[2::3] += torch.matmul(state[2::3], torch.matmul(torch.diag(normalization), self.ts))
         return rhs
 
     def compute_normalization(self):
@@ -70,19 +76,19 @@ class soft_threshold(nn.Module):
     '''
     def __init__(self, bias=False, nonlinearity=False):
         super().__init__()
-        self.W = nn.Linear(3, 3, bias=bias)  # linear map
         if nonlinearity:
-            self.slope = nn.ParameterList([torch.tensor(10.0)+torch.rand(1) for i in range(3)])
-            self.threshold = nn.ParameterList([torch.rand(1) for i in range(3)])
+            self.slope = 10*torch.ones(3)
+            self.threshold = nn.Parameter(torch.rand(3))
+            self.forward = self.forward_nonlinear
+        else:
+            self.W = nn.Linear(3, 3, bias=bias)  # linear map
+            self.forward = self.forward_linear
 
-    def forward(self, UIV_host):
-        # SIR_host = UIV_host  # self.W(UIV_host)
-        # SIR_host = torch.zeros(3, device=UIV_host.device)
-        # for i in range(3):
-        # SIR_host[i] = 1.0/(1.0 + torch.exp(-self.slope[i]*(SIR_host[i]-self.threshold[i])))
-        # SIR_host[i] = 1.0/(1.0 + torch.exp(-self.slope[i]*(UIV_host[i]-self.threshold[i])))
-        # SIR_host = self.W(SIR_host)
-        return self.W(UIV_host)  # self.W(SIR_host)
+    def forward_linear(self, UIV_host):
+        return self.W(UIV_host)
+
+    def forward_nonlinear(self, UIV_host):
+        return 1.0/(1.0 + torch.exp(-self.slope*(UIV_host - self.threshold)))
 
     def get_params(self):
         params = dict()
@@ -102,7 +108,7 @@ class nUIV_NODE(nn.Module):
         self.num_hosts = torch.tensor(num_hosts)
         self.nUIV_x0 = nn.Parameter(torch.rand(3*self.num_hosts))  # initialize a random initial state
         self.nUIV_dynamics = nUIV_rhs(self.num_hosts)  # initialize a random nUIV
-        self.nUIV_to_SIR = soft_threshold()
+        self.nUIV_to_SIR = soft_threshold(nonlinearity=kwargs.pop('nonlinearity', False))
 
         self.parametrization = squared_parametrization()
         P.register_parametrization(self, 'nUIV_x0', self.parametrization)

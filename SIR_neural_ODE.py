@@ -27,12 +27,12 @@ def lp_norm_loss(y, yhat, p=2):
 
 
 # setting up SIR reference data
-num_hosts = 50
+num_hosts = 10
 num_steps = 500
-dt = 0.01
+dt = 1E-4
 torch.manual_seed(666)
 
-time_scale = 75.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+time_scale = 8000.0  # can make time "move faster" by scaling these constants beyond [0, 1]
 beta = time_scale*0.9  # infection rate
 gamma = time_scale*0.01  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
@@ -49,9 +49,73 @@ method = 'euler'
 step_size = dt/2.0
 # build model and fit it
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-model = nUIV_NODE(num_hosts, method=method, step_size=step_size).to(device)
+nonlinearity = False
+model = nUIV_NODE(num_hosts, method=method, step_size=step_size, nonlinearity=nonlinearity).to(device)
+UIV_time_scale = 1.0
+
+# INITIALIZE MODEL WITH REASONABLE PARAMETERS
+with torch.no_grad():
+    U0 = 4E8  # taken from paper
+    I0 = 0  # taken from paper
+    V0 = 50  # taken from paper
+
+    # the initial states will be drawn uniformly at random in the interval
+    #  [U0 * (1-percent_interval), U0*(1+percent_interval)].
+
+    percent_interval = 0.01  # what % around the mean value are we willing to permit randomness about?
+    U0_u = 1E8   # U0*(1+percent_interval)
+    U0_l = 9E8  # U0*(1-percent_interval)
+    I0_u = I0*(1+percent_interval)
+    I0_l = I0*(1-percent_interval)
+    V0_u = 0.0  # V0*(1+percent_interval)
+    V0_l = 100  # V0*(1-percent_interval)
+
+    # all initial states are in interval [0, 1].  Need to center them on U0, I0, V0 and scale them in the interval
+    nUIV_x0_initial = torch.zeros_like(model.nUIV_x0)
+    nUIV_x0_initial[::3] = U0_l + model.nUIV_x0[::3]*(U0_u - U0_l)
+    nUIV_x0_initial[1::3] = I0_l + model.nUIV_x0[1::3]*(I0_u - I0_l)
+    nUIV_x0_initial[2::3] = V0_l + model.nUIV_x0[2::3]*(V0_u - V0_l)
+    model.nUIV_x0 = nUIV_x0_initial
+
+    beta_l = UIV_time_scale*0.01E-8
+    beta_u = UIV_time_scale*30E-8
+    beta_m = UIV_time_scale*3E-8
+
+    model.nUIV_dynamics.betas = beta_l + model.nUIV_dynamics.betas*(beta_u - beta_l)
+
+    delta_l = UIV_time_scale*0.5
+    delta_u = UIV_time_scale*3.0
+    delta_m = UIV_time_scale*1.5
+
+    model.nUIV_dynamics.deltas = delta_l + model.nUIV_dynamics.deltas*(delta_u - delta_l)
+
+    p_l = UIV_time_scale*0.2
+    p_u = UIV_time_scale*35.0  # 350
+    p_m = UIV_time_scale*4.0
+
+    model.nUIV_dynamics.ps = p_l + model.nUIV_dynamics.ps*(p_u-p_l)
+
+    R0_l = UIV_time_scale*4.0
+    R0_u = UIV_time_scale*70.0
+    R0_m = UIV_time_scale*18.0
+
+    c_l = U0*p_l*beta_l/(R0_l*delta_l)
+    c_u = U0*p_u*beta_u/(R0_u*delta_u)
+    c_m = U0*p_m*beta_m/(R0_m*delta_m)
+
+    model.nUIV_dynamics.ts = c_l + model.nUIV_dynamics.ts*(c_u - c_l)
+    if nonlinearity:
+        model.nUIV_to_SIR.threshold[0] = 100
+        model.nUIV_to_SIR.threshold[1] = 100
+        model.nUIV_to_SIR.threshold[2] = 100
+    else:
+        model.nUIV_to_SIR.W.weight.data[:, 0] = model.nUIV_to_SIR.W.weight.data[:, 0]*1E-7  # Need to drastically re-scale the UIV->SIR map
+
+
 num_epochs = 500
-optimizer = optim.Adam(model.parameters(), lr=1e-1, weight_decay=0.0)
+lr = 1e-10
+weight_decay = 0.0
+optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=10, verbose=True)
 loss_function = lambda y, yhat: lp_norm_loss(y, yhat, p=4)  # nn.L1Loss()
 
@@ -80,8 +144,6 @@ SIR_params = {'beta': beta,
 sim_params = {'SIR': SIR_params,
               'nUIV': nUIV_params}
 
-print(nUIV_params)
-
 path = './tmp/'
 # path = '/content/tmp/'
 if not os.path.exists(path):
@@ -93,9 +155,6 @@ with open(filename, 'wb') as f:
 np.set_printoptions(threshold=np.inf)
 filename = os.path.join(path, 'params.txt')
 with open(filename, 'w') as f:
-    f.write('SIMULATION PARAMATERS:\n')
-    for key, value in sim_params.items():
-        f.write(f'{key} : {value}\n')
     f.write('SIR MODEL PARAMETERS\n')
     for key, value in SIR_params.items():
         f.write(f'{key} : {value}\n')
@@ -106,8 +165,11 @@ with open(filename, 'w') as f:
 # TODO: Write testing block to visualize the quality of the fit ODE
 # First, reset the SIR model, change its time step
 SIR_stepper.reset()
-SIR_stepper.dt = 0.001
-num_steps = 10000
+total_time = dt*num_steps
+# SIR_stepper.dt = 0.001
+
+# simulate for twice as far into future for testing
+num_steps = int(2*total_time/SIR_stepper.dt)
 SIR_test_data, time_test_data = generate_SIR_data(SIR_stepper, num_steps)
 
 with torch.no_grad():
