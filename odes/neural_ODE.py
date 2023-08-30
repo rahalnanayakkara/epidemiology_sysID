@@ -77,8 +77,9 @@ class soft_threshold(nn.Module):
     def __init__(self, bias=False, nonlinearity=False):
         super().__init__()
         if nonlinearity:
-            self.slope = 10*torch.ones(3)
-            self.threshold = nn.Parameter(torch.rand(3))
+            self.slope = nn.Parameter(torch.tensor(1.0))  # *torch.ones(3)
+            self.threshold = nn.Parameter(torch.rand(1)*100)  # nn.Parameter(torch.rand(3))
+            self.act = nn.Sigmoid()
             self.forward = self.forward_nonlinear
         else:
             self.W = nn.Linear(3, 3, bias=bias)  # linear map
@@ -88,17 +89,22 @@ class soft_threshold(nn.Module):
         return self.W(UIV_host)
 
     def forward_nonlinear(self, UIV_host):
-        return 1.0/(1.0 + torch.exp(-self.slope*(UIV_host - self.threshold)))
+        return torch.sigmoid(self.slope*(UIV_host-self.threshold))
+        # return self.act(UIV_host-self.threshold)  # 1.0/(1.0 + torch.exp(-self.slope*(UIV_host - self.threshold)))
 
     def get_params(self):
         params = dict()
-        params['weight'] = self.W.weight.detach().cpu().numpy()
-        if self.W.bias is not None:
-            params['bias'] = self.W.bias.detach().cpu().numpy()
+        if hasattr(self, 'W'):
+            params['weight'] = self.W.weight.detach().cpu().numpy()
+            if self.W.bias is not None:
+                params['bias'] = self.W.bias.detach().cpu().numpy()
         if hasattr(self, 'slope'):
-            for i in range(3):
-                params['threshold_'+str(i)] = {'slope': self.slope[i].detach().cpu().numpy(),
-                                               'threshold': self.threshold[i].detach().cpu().numpy()}
+            params['slope'] = self.slope.detach().cpu().numpy()
+        if hasattr(self, 'threshold'):
+            params['threshold'] = self.threshold.detach().cpu().numpy()
+            # for i in range(3):
+            #     params['threshold_'+str(i)] = {'slope': self.slope[i].detach().cpu().numpy(),
+            #                                    'threshold': self.threshold[i].detach().cpu().numpy()}
         return params
 
 

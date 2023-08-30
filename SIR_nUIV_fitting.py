@@ -23,18 +23,18 @@ def generate_SIR_data(model, num_steps):
 
 
 def lp_norm_loss(y, yhat, p=2):
-    return torch.norm(y-yhat, p=p)
+    return torch.pow(torch.norm(y-yhat, p=p), p)
 
 
 # setting up SIR reference data
-num_hosts = 10
-num_steps = 500
-dt = 1E-4
+num_hosts = 100
+num_steps = 300
+dt = 0.0001
 torch.manual_seed(666)
 
-time_scale = 8000.0  # can make time "move faster" by scaling these constants beyond [0, 1]
-beta = time_scale*0.9  # infection rate
-gamma = time_scale*0.01  # recovery rate
+time_scale = 1000.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+beta = time_scale*0.33  # infection rate
+gamma = time_scale*0.2  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
 SIR_x0 = np.array([0.3, 0.5, 0.2])
 
@@ -56,7 +56,7 @@ UIV_time_scale = 1.0
 # INITIALIZE MODEL WITH REASONABLE PARAMETERS
 with torch.no_grad():
     U0 = 4E8  # taken from paper
-    I0 = 0  # taken from paper
+    I0 = 5  # taken from paper
     V0 = 50  # taken from paper
 
     # the initial states will be drawn uniformly at random in the interval
@@ -105,19 +105,25 @@ with torch.no_grad():
 
     model.nUIV_dynamics.ts = c_l + model.nUIV_dynamics.ts*(c_u - c_l)
     if nonlinearity:
-        model.nUIV_to_SIR.threshold[0] = 100
-        model.nUIV_to_SIR.threshold[1] = 100
-        model.nUIV_to_SIR.threshold[2] = 100
+        # model.nUIV_to_SIR.threshold[0] = 100
+        # model.nUIV_to_SIR.threshold[1] = 100
+        # model.nUIV_to_SIR.threshold[2] = 100
+        model.nUIV_to_SIR.threshold.data = torch.tensor(100.0)
     else:
-        model.nUIV_to_SIR.W.weight.data[:, 0] = model.nUIV_to_SIR.W.weight.data[:, 0]*1E-7  # Need to drastically re-scale the UIV->SIR map
+        model.nUIV_to_SIR.W.weight.data[:, 0] = model.nUIV_to_SIR.W.weight.data[:, 0]*1E-9  # Need to drastically re-scale the UIV->SIR map
+        model.nUIV_to_SIR.W.weight.data[:, 1] = model.nUIV_to_SIR.W.weight.data[:, 1]*1E-9
+        model.nUIV_to_SIR.W.weight.data[:, 2] = model.nUIV_to_SIR.W.weight.data[:, 2]*1E-9
 
 
-num_epochs = 500
-lr = 1e-10
+num_epochs = 200
+lr = 1E-9
 weight_decay = 0.0
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=10, verbose=True)
-loss_function = lambda y, yhat: lp_norm_loss(y, yhat, p=4)  # nn.L1Loss()
+only_I_fit = lambda y, yhat: torch.nn.functional.mse_loss(y[1, :], yhat[1, :])  # torch.nn.functional.l1_loss(y[1, :], yhat[1, :])
+Lp_loss = lambda y, yhat: torch.nn.functional.mse_loss(y, yhat)  # , p=2)  # nn.L1Loss()
+
+loss_function = Lp_loss
 
 for epoch in range(num_epochs):
     optimizer.zero_grad()
@@ -126,7 +132,8 @@ for epoch in range(num_epochs):
     loss_val = loss.item()
     loss.backward()
     optimizer.step()
-    scheduler.step(loss_val)
+    if scheduler:
+        scheduler.step(loss_val)
 
     print(f'Epoch {epoch}, loss value: {loss_val}.')
     if torch.isnan(loss):
