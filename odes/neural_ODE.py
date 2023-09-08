@@ -52,7 +52,8 @@ class nUIV_rhs(nn.Module):
         rhs[1::3] = self.betas*state[::3]*state[2::3] - self.deltas*state[1::3]
         rhs[2::3] = self.ps*state[1::3] - self.cs*state[2::3] \
             - (1.0 + normalization)*torch.diag(self.ts)*state[2::3]
-        rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
+        #rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
+        rhs[2::3] += torch.exp(-t)*torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
         return rhs
 
     def compute_normalization(self):

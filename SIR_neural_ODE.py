@@ -28,15 +28,15 @@ def lp_norm_loss(y, yhat, p=2):
 
 # setting up SIR reference data
 num_hosts = 50
-num_steps = 1000
-dt = 0.01
+num_steps = 400
+dt = 0.05
 torch.manual_seed(666)
 
-time_scale = 75.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+time_scale = 25.0  # can make time "move faster" by scaling these constants beyond [0, 1]
 beta = time_scale*0.9  # infection rate
 gamma = time_scale*0.01  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)
-SIR_x0 = np.array([0.99, 0.01, 0.0])
+SIR_x0 = np.array([0.75, 0.25, 0.0])
 
 
 # generate data
