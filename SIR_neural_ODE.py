@@ -75,12 +75,12 @@ train_c = 2.4*torch.ones(9)
 #train_params = torch.tensor([torch.mean(log_train_beta),torch.mean(train_delta),torch.mean(log_train_p),torch.mean(train_c)])
 train_params = torch.cat((torch.mean(log_train_beta)*torch.ones(num_hosts),torch.mean(train_delta)*torch.ones(num_hosts),torch.mean(train_p)*torch.ones(num_hosts),torch.mean(train_c)*torch.ones(num_hosts)))
 
-com_train = torch.cat((SIR_train_data[1,:],0.01*train_params))
+com_train = torch.cat((SIR_train_data[1,:],0.01*train_params,torch.zeros(num_hosts)))
 
 for epoch in range(num_epochs):
     optimizer.zero_grad()
     SIR_est = model.simulate(time_train_data.to(device)).to(device)
-    #UIV_x0_est = model.nUIV_x0
+    UIV_x0_est = model.nUIV_x0
     #UIV_x0_est = UIV_x0_est.T
     #UIV_U0_est = UIV_x0_est[::3]
     #UIV_I0_est = UIV_x0_est[1::3]
@@ -97,7 +97,7 @@ for epoch in range(num_epochs):
     #params_est = torch.tensor([torch.mean(log_beta_est),torch.mean(delta_est),torch.mean(log_p_est),torch.mean(c_est)])
     params_est = torch.cat((log_beta_est,delta_est,p_est,c_est))
 
-    com_est = torch.cat((SIR_est[1,:],0.01*params_est))
+    com_est = torch.cat((SIR_est[1,:],0.01*params_est,UIV_x0_est[3::4]))
 
     loss = loss_function(com_est, com_train.to(device))
     #loss = loss_function(SIR_est, SIR_train_data.to(device))

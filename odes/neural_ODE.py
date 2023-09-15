@@ -44,7 +44,7 @@ class nUIV_rhs(nn.Module):
         P.register_parametrization(self, 'cs', self.parametrization)
         P.register_parametrization(self, 'ps', self.parametrization)
         P.register_parametrization(self, 'ts', self.parametrization)
-
+    '''
     def forward(self, t, state):
         rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
         normalization = self.compute_normalization()
@@ -54,6 +54,19 @@ class nUIV_rhs(nn.Module):
             - (1.0 + normalization)*torch.diag(self.ts)*state[2::3]
         #rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
         rhs[2::3] += torch.exp(-t)*torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
+        return rhs
+    '''
+    def forward(self, t, state):
+        rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
+        normalization = self.compute_normalization()
+        rhs[::4] = -self.betas*state[::4]*state[2::4]
+        rhs[1::4] = self.betas*state[::4]*state[2::4] - self.deltas*state[1::4]
+        rhs[2::4] = self.ps*state[1::4] - self.cs*state[2::4] \
+            - (1.0 + normalization)*torch.diag(self.ts)*state[2::4]
+        rhs[2::4] += torch.matmul(state[2::4].T, torch.matmul(torch.diag(normalization), self.ts))
+        #rhs[2::4] += torch.exp(-state[3::4])*torch.matmul(state[2::4].T, torch.matmul(torch.diag(normalization), self.ts))
+        pre_determined_k = 10
+        rhs[3::4] = pre_determined_k*state[2::4]
         return rhs
 
     def compute_normalization(self):
@@ -122,7 +135,14 @@ class nUIV_NODE(nn.Module):
     def __init__(self, num_hosts: int, **kwargs):
         super().__init__()
         self.num_hosts = torch.tensor(num_hosts)
-        self.nUIV_x0 = nn.Parameter(torch.rand(3*self.num_hosts))  # initialize a random initial state
+        #self.nUIV_x0 = nn.Parameter(torch.rand(3*self.num_hosts))  # initialize a random initial state
+        self.nUIV_x0 = nn.Parameter(torch.rand(4*self.num_hosts))  # initialize a random initial state (memory)
+        #self.nUIV_x0[3::4] = 0
+        #UIV0 = torch.reshape(self.nUIV_UIV0,(num_hosts,3))
+        #x0 = torch.cat((UIV0,torch.zeros((num_hosts,1))),1)
+        #x0 = torch.reshape(x0,(1,4*num_hosts))
+        #x0 = x0[0]
+        #self.nUIV_x0 = x0
         #tensor = torch.zeros(3 * self.num_hosts)
         #exp_values = torch.normal(mean=0.0, std=0.05, size=(self.num_hosts,))
         #tensor[::3] = 10**(9 + exp_values)
@@ -135,16 +155,10 @@ class nUIV_NODE(nn.Module):
         self.parametrization = squared_parametrization()
         #self.parametrization = abs_parametrization()
         P.register_parametrization(self, 'nUIV_x0', self.parametrization)
+        #P.register_parametrization(self, 'nUIV_UIV0', self.parametrization)
 
         self.method = kwargs.pop('method', 'rk4')
         self.step_size = kwargs.pop('step_size', None)
-
-    def _create_custom_tensor(self):
-        tensor = torch.zeros(3 * self.num_hosts)
-        exp_values = torch.normal(mean=0.0, std=0.5, size=(self.num_hosts,))
-        tensor[::3] = 10 ** (9 + exp_values)
-        tensor[2::3] = torch.normal(mean=10.0, std=0.5, size=(self.num_hosts,))
-        return tensor
 
     def simulate(self, times):
         solution = odeint(self.nUIV_dynamics, self.nUIV_x0,
@@ -153,7 +167,8 @@ class nUIV_NODE(nn.Module):
         if torch.isnan(solution).any():
             print("Cannot solve the ODEs!")
             print(solution)
-        UIV_initial = torch.reshape(solution, (len(times), self.num_hosts, 3))
+        #UIV_initial = torch.reshape(solution, (len(times), self.num_hosts, 3))
+        UIV_initial = torch.reshape(solution, (len(times), self.num_hosts, 4)) # (memory)
         SIR_initial = self.nUIV_to_SIR(UIV_initial)
         SIR = torch.sum(SIR_initial, axis=1).T
         #SIR_normal = SIR_initial/SIR_initial.sum(dim=2, keepdim=True)
@@ -171,5 +186,6 @@ class nUIV_NODE(nn.Module):
             params['c'] = self.nUIV_dynamics.cs.detach().cpu().numpy()
             params['t'] = self.nUIV_dynamics.ts.detach().cpu().numpy()
             params['x0'] = self.nUIV_x0.detach().cpu().numpy()
+            #params['x0'] = self.nUIV_UIV0.detach().cpu().numpy()
             params['nUIV_to_SIR'] = self.nUIV_to_SIR.get_params()
         return params
