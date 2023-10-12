@@ -78,18 +78,19 @@ class soft_threshold(nn.Module):
         super().__init__()
         if nonlinearity:
             self.slope = nn.Parameter(torch.tensor(1.0))  # *torch.ones(3)
-            self.threshold = nn.Parameter(torch.rand(1)*100)  # nn.Parameter(torch.rand(3))
+            self.threshold = nn.Parameter(torch.rand(3)*200)  # nn.Parameter(torch.rand(3))
             self.act = nn.Sigmoid()
+            self.W = nn.Linear(3, 3, bias=bias)
             self.forward = self.forward_nonlinear
         else:
             self.W = nn.Linear(3, 3, bias=bias)  # linear map
             self.forward = self.forward_linear
 
     def forward_linear(self, UIV_host):
-        return self.W(UIV_host)
+        return torch.nn.functional.normalize(self.W(UIV_host), p=1, dim=-1)
 
     def forward_nonlinear(self, UIV_host):
-        return torch.sigmoid(self.slope*(UIV_host-self.threshold))
+        return torch.nn.functional.normalize(torch.sigmoid(self.slope*(UIV_host-self.threshold)), p=1, dim=-1)
         # return self.act(UIV_host-self.threshold)  # 1.0/(1.0 + torch.exp(-self.slope*(UIV_host - self.threshold)))
 
     def get_params(self):
@@ -124,10 +125,10 @@ class nUIV_NODE(nn.Module):
 
     def simulate(self, times):
         solution = odeint(self.nUIV_dynamics, self.nUIV_x0,
-                          times, method=self.method, options=dict(step_size=self.step_size)).to(times.device)
-        SIR = torch.zeros(3, len(times), device=times.device)
-        SIR = torch.sum(self.nUIV_to_SIR(torch.reshape(solution, (len(times), self.num_hosts, 3))), axis=1).T
-        return SIR/self.num_hosts
+                          times, method=self.method, options=dict(step_size=self.step_size)).to(times.device)  # shape T x 3*num_hosts
+        # SIR = torch.zeros(3, len(times), device=times.device)
+        SIR = torch.mean(self.nUIV_to_SIR(torch.reshape(solution, (len(times), self.num_hosts, 3))), axis=1).transpose(0, 1)  # result should be 3 x T
+        return SIR
 
     def get_params(self):
         params = dict()

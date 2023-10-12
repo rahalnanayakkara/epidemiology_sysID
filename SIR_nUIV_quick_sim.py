@@ -3,41 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from odes.models import SIR, nUIV
 from odes.integrator import integrator
-import torch
-import torch.nn as nn
-from functorch import jacfwd
-
-
-class nUIV_to_SIR(nn.Module):
-    '''
-    Callable class that converts a networked UIV model state to an SIR state
-    '''
-    def __init__(self, num_hosts, **kwargs):
-        self.num_hosts = num_hosts
-
-        self.slope = kwargs.pop('slope', 10.0)
-        self.threshold = kwargs.pop('threshold', 1e3)
-
-    def forward(self, UIV_state):
-        SIR_state = torch.zeros(3,)
-        '''
-        W = np.array([[1.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0],conda
-                    [0.0, 0.0, 1.0]])
-        '''
-        for n in range(num_hosts):
-            SIR_state[2] += 1.0
-            SIR_state[0] += self.soft_threshold(UIV_state[3*n], self.slope, self.threshold)
-            SIR_state[2] -= self.soft_threshold(UIV_state[3*n], self.slope, self.threshold)
-            SIR_state[1] += self.soft_threshold(UIV_state[3*n+1], self.slope, self.threshold)
-            SIR_state[2] -= self.soft_threshold(UIV_state[3*n+1], self.slope, self.threshold)
-        return SIR_state/self.num_hosts
-
-    def soft_threshold(self, x, slope=10.0, threshold=0.0):
-        return 1.0/(1.0 + torch.exp(slope*x - threshold))
-
-    def jacobian(self, UIV_state):
-        return jacfwd(self.forward, argnums=1)(UIV_state).numpy()
 
 
 num_hosts = 5  # number of people in system
@@ -61,15 +26,15 @@ for n in G:
 
 nUIV_ODE = nUIV(G)
 
-num_steps = 250
-dt = 0.001
+num_steps = 300
+dt = 0.0001
 
 nUIV_x0 = nUIV_ODE.get_graph_state()
 nUIV_stepper = integrator(nUIV_ODE, nUIV_x0, dt)
 nUIV_states = np.zeros((3*num_hosts, num_steps))
 nUIV_states[:, 0] = nUIV_x0
 
-time_scale = 100.0  # can make time "move faster" by scaling these constants beyond [0, 1]
+time_scale = 1000.0  # can make time "move faster" by scaling these constants beyond [0, 1]
 beta = time_scale*0.33  # infection rate
 gamma = time_scale*0.2  # recovery rate
 SIR_ODE = SIR(num_hosts, beta, gamma)

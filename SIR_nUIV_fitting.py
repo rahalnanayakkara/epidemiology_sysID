@@ -27,8 +27,8 @@ def lp_norm_loss(y, yhat, p=2):
 
 
 # setting up SIR reference data
-num_hosts = 100
-num_steps = 300
+num_hosts = 50
+num_steps = 400
 dt = 0.0001
 torch.manual_seed(666)
 
@@ -49,26 +49,26 @@ method = 'euler'
 step_size = dt/2.0
 # build model and fit it
 device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-nonlinearity = False
+nonlinearity = True
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size, nonlinearity=nonlinearity).to(device)
 UIV_time_scale = 1.0
 
 # INITIALIZE MODEL WITH REASONABLE PARAMETERS
 with torch.no_grad():
     U0 = 4E8  # taken from paper
-    I0 = 5  # taken from paper
+    I0 = 50  # taken from paper
     V0 = 50  # taken from paper
 
     # the initial states will be drawn uniformly at random in the interval
     #  [U0 * (1-percent_interval), U0*(1+percent_interval)].
 
     percent_interval = 0.01  # what % around the mean value are we willing to permit randomness about?
-    U0_u = 1E8   # U0*(1+percent_interval)
-    U0_l = 9E8  # U0*(1-percent_interval)
+    U0_u = 9E8   # U0*(1+percent_interval)
+    U0_l = 1E8  # U0*(1-percent_interval)
     I0_u = I0*(1+percent_interval)
     I0_l = I0*(1-percent_interval)
-    V0_u = 0.0  # V0*(1+percent_interval)
-    V0_l = 100  # V0*(1-percent_interval)
+    V0_u = 200  # V0*(1+percent_interval)
+    V0_l = 0  # V0*(1-percent_interval)
 
     # all initial states are in interval [0, 1].  Need to center them on U0, I0, V0 and scale them in the interval
     nUIV_x0_initial = torch.zeros_like(model.nUIV_x0)
@@ -108,7 +108,7 @@ with torch.no_grad():
         # model.nUIV_to_SIR.threshold[0] = 100
         # model.nUIV_to_SIR.threshold[1] = 100
         # model.nUIV_to_SIR.threshold[2] = 100
-        model.nUIV_to_SIR.threshold.data = torch.tensor(100.0)
+        model.nUIV_to_SIR.threshold.data = torch.tensor(150.0)
     else:
         model.nUIV_to_SIR.W.weight.data[:, 0] = model.nUIV_to_SIR.W.weight.data[:, 0]*1E-9  # Need to drastically re-scale the UIV->SIR map
         model.nUIV_to_SIR.W.weight.data[:, 1] = model.nUIV_to_SIR.W.weight.data[:, 1]*1E-9
@@ -116,14 +116,15 @@ with torch.no_grad():
 
 
 num_epochs = 200
-lr = 1E-9
+lr = 5E-4
 weight_decay = 0.0
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=10, verbose=True)
-only_I_fit = lambda y, yhat: torch.nn.functional.mse_loss(y[1, :], yhat[1, :])  # torch.nn.functional.l1_loss(y[1, :], yhat[1, :])
+only_VI_fit = lambda y, yhat: torch.nn.functional.l1_loss(yhat[2, :], y[1, :])  # torch.nn.functional.l1_loss(y[1, :], yhat[1, :])
+only_II_fit = lambda y, yhat: torch.nn.functional.l1_loss(yhat[1, :], y[1, :])
 Lp_loss = lambda y, yhat: torch.nn.functional.mse_loss(y, yhat)  # , p=2)  # nn.L1Loss()
 
-loss_function = Lp_loss
+loss_function = only_VI_fit
 
 for epoch in range(num_epochs):
     optimizer.zero_grad()
