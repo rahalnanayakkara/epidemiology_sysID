@@ -48,7 +48,8 @@ SIR_train_data, time_train_data = generate_SIR_data(SIR_stepper, num_steps)
 method = 'euler'
 step_size = dt/2.0
 # build model and fit it
-device = 'cpu'  # torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+print(device)
 nonlinearity = True
 model = nUIV_NODE(num_hosts, method=method, step_size=step_size, nonlinearity=nonlinearity).to(device)
 UIV_time_scale = 1.0
