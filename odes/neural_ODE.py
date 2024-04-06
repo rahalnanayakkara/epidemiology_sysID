@@ -64,9 +64,6 @@ class nUIV_rhs(nn.Module):
         rhs[2::3] = self.ps*state[1::3] - self.cs*state[2::3] \
             - (1.0 + normalization)*torch.diag(self.ts)*state[2::3]
         rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
-        #rhs[2::4] += torch.exp(-state[3::4])*torch.matmul(state[2::4].T, torch.matmul(torch.diag(normalization), self.ts))
-        # pre_determined_k = 10
-        # rhs[3::4] = pre_determined_k*state[2::4]
         return rhs
 
     def compute_normalization(self):
@@ -87,30 +84,28 @@ class soft_threshold(nn.Module):
     function for mapping from a single host's UIV state to their SIR state.
     Currently defined as a linear map plus a soft-thresholding operator.
     '''
-    def __init__(self, bias=False, nonlinearity=False):
+    def __init__(self, bias=False, nonlinearity=True):
         super().__init__()
         self.W = nn.Linear(3, 3, bias=bias)  # linear map
-        if nonlinearity:
-            #self.slope = nn.ParameterList([torch.tensor(10.0)+torch.rand(1) for i in range(3)])
-            #self.threshold = nn.ParameterList([torch.rand(1) for i in range(3)])
-            self.slope = nn.Parameter(torch.tensor(10.0)+torch.rand(1))
-            self.threshold = nn.Parameter(torch.rand(1))
+        # if nonlinearity:
+        #     self.slope = nn.ParameterList([torch.tensor(10.0)+torch.rand(1) for _ in range(3)])
+        #     self.threshold = nn.ParameterList([torch.rand(1) for _ in range(3)])
+            # self.slope = nn.Parameter(torch.tensor(10.0)+torch.rand(1))
+            # self.threshold = nn.Parameter(torch.rand(1))
 
-    #def forward(self, UIV_host):
-        # SIR_host = UIV_host  # self.W(UIV_host)
-        #SIR_host = torch.zeros(3, device=UIV_host.device)
-        # for i in range(3):
-        # SIR_host[i] = 1.0/(1.0 + torch.exp(-self.slope[i]*(SIR_host[i]-self.threshold[i])))
-        # SIR_host[i] = 1.0/(1.0 + torch.exp(-self.slope[i]*(UIV_host[i]-self.threshold[i])))
-        # SIR_host = self.W(SIR_host)
-        #return self.W(UIV_host)  # self.W(SIR_host)
-    
     def forward(self, UIV_host):
         tf_state = self.W(UIV_host)
-        I_host = 1.0/(1.0 + torch.exp(-self.slope*(tf_state[:,:,2]-self.threshold)))
-        SIR_host = tf_state
-        SIR_host[:,:,1] = I_host
-        return SIR_host
+        # SIR_host = torch.zeros_like(tf_state, device=UIV_host.device)
+        # for i in range(3):
+        #     SIR_host[:,:,i] = 1.0/(1.0 + torch.exp(-self.slope[i]*(tf_state[:,:,i]-self.threshold[i])))
+        return tf_state
+    
+    # def forward(self, UIV_host):
+    #     tf_state = self.W(UIV_host)
+    #     I_host = 1.0/(1.0 + torch.exp(-self.slope*(tf_state[:,:,2]-self.threshold)))
+    #     SIR_host = tf_state
+    #     SIR_host[:,:,1] = I_host
+    #     return SIR_host
     '''
     def get_params(self):
         params = dict()
@@ -125,8 +120,11 @@ class soft_threshold(nn.Module):
     '''
     def get_params(self):
         params = dict()
-        params['slope'] = self.slope.detach().cpu().numpy()
-        params['threshold'] = self.threshold.detach().cpu().numpy()
+        # params['slope'] = self.slope.detach().cpu().numpy()
+        # params['threshold'] = self.threshold.detach().cpu().numpy()
+        params['weight'] = self.W.weight.detach().cpu().numpy()
+        if self.W.bias is not None:
+            params['bias'] = self.W.bias.detach().cpu().numpy()
         return params
 
 
@@ -149,7 +147,7 @@ class nUIV_NODE(nn.Module):
         #tensor[2::3] = 10*torch.ones((self.num_hosts,))
         #self.nUIV_x0 = nn.Parameter(tensor)
         self.nUIV_dynamics = nUIV_rhs(self.num_hosts)  # initialize a random nUIV
-        self.nUIV_to_SIR = soft_threshold(nonlinearity=1)
+        self.nUIV_to_SIR = soft_threshold()
 
         self.parametrization = squared_parametrization()
         #self.parametrization = abs_parametrization()
