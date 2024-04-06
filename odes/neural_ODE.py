@@ -105,11 +105,10 @@ class soft_threshold(nn.Module):
         # SIR_host = self.W(SIR_host)
         #return self.W(UIV_host)  # self.W(SIR_host)
     
-    def forward(self,UIV_host):
-        I_host = 1.0/(1.0 + torch.exp(-self.slope*(UIV_host[:,:,2]-self.threshold)))
-        SIR_host = UIV_host
-        SIR_host[:,:,0] = 0
-        SIR_host[:,:,2] = 0
+    def forward(self, UIV_host):
+        tf_state = self.W(UIV_host)
+        I_host = 1.0/(1.0 + torch.exp(-self.slope*(tf_state[:,:,2]-self.threshold)))
+        SIR_host = tf_state
         SIR_host[:,:,1] = I_host
         return SIR_host
     '''
