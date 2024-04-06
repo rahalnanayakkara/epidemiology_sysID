@@ -59,14 +59,14 @@ class nUIV_rhs(nn.Module):
     def forward(self, t, state):
         rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
         normalization = self.compute_normalization()
-        rhs[::4] = -self.betas*state[::4]*state[2::4]
-        rhs[1::4] = self.betas*state[::4]*state[2::4] - self.deltas*state[1::4]
-        rhs[2::4] = self.ps*state[1::4] - self.cs*state[2::4] \
-            - (1.0 + normalization)*torch.diag(self.ts)*state[2::4]
-        rhs[2::4] += torch.matmul(state[2::4].T, torch.matmul(torch.diag(normalization), self.ts))
+        rhs[::3] = -self.betas*state[::3]*state[2::3]
+        rhs[1::3] = self.betas*state[::3]*state[2::3] - self.deltas*state[1::3]
+        rhs[2::3] = self.ps*state[1::3] - self.cs*state[2::3] \
+            - (1.0 + normalization)*torch.diag(self.ts)*state[2::3]
+        rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
         #rhs[2::4] += torch.exp(-state[3::4])*torch.matmul(state[2::4].T, torch.matmul(torch.diag(normalization), self.ts))
-        pre_determined_k = 10
-        rhs[3::4] = pre_determined_k*state[2::4]
+        # pre_determined_k = 10
+        # rhs[3::4] = pre_determined_k*state[2::4]
         return rhs
 
     def compute_normalization(self):
@@ -135,8 +135,8 @@ class nUIV_NODE(nn.Module):
     def __init__(self, num_hosts: int, **kwargs):
         super().__init__()
         self.num_hosts = torch.tensor(num_hosts)
-        #self.nUIV_x0 = nn.Parameter(torch.rand(3*self.num_hosts))  # initialize a random initial state
-        self.nUIV_x0 = nn.Parameter(torch.rand(4*self.num_hosts))  # initialize a random initial state (memory)
+        self.nUIV_x0 = nn.Parameter(torch.rand(3*self.num_hosts))  # initialize a random initial state
+        # self.nUIV_x0 = nn.Parameter(torch.rand(4*self.num_hosts))  # initialize a random initial state (memory)
         #self.nUIV_x0[3::4] = 0
         #UIV0 = torch.reshape(self.nUIV_UIV0,(num_hosts,3))
         #x0 = torch.cat((UIV0,torch.zeros((num_hosts,1))),1)
@@ -167,8 +167,8 @@ class nUIV_NODE(nn.Module):
         if torch.isnan(solution).any():
             print("Cannot solve the ODEs!")
             print(solution)
-        #UIV_initial = torch.reshape(solution, (len(times), self.num_hosts, 3))
-        UIV_initial = torch.reshape(solution, (len(times), self.num_hosts, 4)) # (memory)
+        UIV_initial = torch.reshape(solution, (len(times), self.num_hosts, 3))
+        # UIV_initial = torch.reshape(solution, (len(times), self.num_hosts, 4)) # (memory)
         SIR_initial = self.nUIV_to_SIR(UIV_initial)
         SIR = torch.sum(SIR_initial, axis=1).T
         #SIR_normal = SIR_initial/SIR_initial.sum(dim=2, keepdim=True)
