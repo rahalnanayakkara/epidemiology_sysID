@@ -28,6 +28,7 @@ class nUIV_rhs(nn.Module):
     def __init__(self, N: int):
         super(nUIV_rhs, self).__init__()
         self.N = N
+        self.relu = nn.ReLU()
         #self.betas = nn.Parameter(1.35*10**(-7)*torch.ones((self.N,)))
         #self.deltas = nn.Parameter(0.61*torch.ones((self.N,)))
         #self.cs = nn.Parameter(2.4*torch.ones((self.N,)))
@@ -37,6 +38,8 @@ class nUIV_rhs(nn.Module):
         self.cs = nn.Parameter(torch.rand((self.N,)))
         self.ps = nn.Parameter(torch.rand((self.N,)))
         self.ts = nn.Parameter(torch.eye(self.N) + torch.rand((self.N, self.N))/2.0)
+        self.in_thresh = nn.Parameter(torch.rand((self.N,)))
+        self.ex_thresh = nn.Parameter(torch.rand((self.N,)))
         self.parametrization = squared_parametrization()
         #self.parametrization = abs_parametrization()
         P.register_parametrization(self, 'betas', self.parametrization)
@@ -44,6 +47,8 @@ class nUIV_rhs(nn.Module):
         P.register_parametrization(self, 'cs', self.parametrization)
         P.register_parametrization(self, 'ps', self.parametrization)
         P.register_parametrization(self, 'ts', self.parametrization)
+        P.register_parametrization(self, 'in_thresh', self.parametrization)
+        P.register_parametrization(self, 'ex_thresh', self.parametrization)
     '''
     def forward(self, t, state):
         rhs = torch.zeros_like(state)  # (U, I, V) RHS's for each node
@@ -61,15 +66,19 @@ class nUIV_rhs(nn.Module):
         normalization = self.compute_normalization()
         rhs[::3] = -self.betas*state[::3]*state[2::3]
         rhs[1::3] = self.betas*state[::3]*state[2::3] - self.deltas*state[1::3]
-        rhs[2::3] = self.ps*state[1::3] - self.cs*state[2::3] \
-            - (1.0 + normalization)*torch.diag(self.ts)*state[2::3]
-        rhs[2::3] += torch.matmul(state[2::3].T, torch.matmul(torch.diag(normalization), self.ts))
+        # rhs[2::3] = self.ps*state[1::3] - self.cs*state[2::3] \
+        #     - (1.0 + normalization)*torch.diag(self.ts)*state[2::3]
+        # rhs[2::3] += torch.matmul(state[2::3], torch.matmul(torch.diag(normalization), self.ts))
+        mat = torch.matmul(torch.diag(normalization), self.ts) - torch.diag((1.0 + normalization)*torch.diag(self.ts))
+        rhs[2::3] = self.ps*state[1::3] - self.cs*state[2::3]
+        rhs[2::3] += self.relu(torch.matmul(self.relu(state[2::3]-self.ex_thresh), mat))
         return rhs
 
     def compute_normalization(self):
-        normalization = torch.zeros_like(self.betas)
-        normalization = torch.min(torch.diag(self.ts) / (torch.sum(self.ts, axis=1)
-                                  - torch.diag(self.ts)), torch.tensor(1.0))
+        # normalization = torch.min(torch.diag(self.ts) / (torch.sum(self.ts, axis=1)
+        #                           - torch.diag(self.ts)), torch.tensor(1.0))
+        normalization = torch.tensor(1.0) / (torch.sum(self.ts, axis=1)
+                                  - torch.diag(self.ts))
         return normalization
 
     def normalize_ts(self):
@@ -80,7 +89,7 @@ class nUIV_rhs(nn.Module):
 
 
 class soft_threshold(nn.Module):
-    '''
+    '''0.
     function for mapping from a single host's UIV state to their SIR state.
     Currently defined as a linear map plus a soft-thresholding operator.
     '''
