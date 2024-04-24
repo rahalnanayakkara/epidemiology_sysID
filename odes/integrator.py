@@ -12,25 +12,31 @@ class integrator:
         - x0 : initial state of system
         - dt : time-step to take between "step" calls
         - integration_dt : timesteps for numerical integration
+        - func : function to apply after each step
     '''
-    def __init__(self, ODE, x0: np.ndarray, dt: float, **kwargs):
+    def __init__(self, ODE, x0: np.ndarray, dt: float, func=None, **kwargs):
         self.ODE = ODE
         self.x = x0
         self.dt = dt
         self.t = 0.0
         self.x0 = x0
         self.method = kwargs.pop('method', None)
+        self.func = func
 
-    def step(self):
+    def step(self, u=None):
 
         def f(t, x):
-            return self.ODE.RHS(self.x)
+            return self.ODE.RHS(self.x) if u is None else self.ODE.RHS(self.x, u)
         if self.method is None:
             sol = solve_ivp(f, (self.t, self.t + self.dt), self.x)
         else:
             sol = solve_ivp(f, (self.t, self.t + self.dt), self.x, method=self.method)
         self.t += self.dt  # update time
         self.x = sol.y[:, -1]  # update state
+        
+        # apply func - typically for clipping states
+        if self.func is not None:
+            self.x = self.func(self.x)
 
         return self.x
 

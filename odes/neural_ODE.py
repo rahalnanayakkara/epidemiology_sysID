@@ -138,7 +138,7 @@ class soft_threshold(nn.Module):
 
 
 class nUIV_NODE(nn.Module):
-    def __init__(self, num_hosts: int, **kwargs):
+    def __init__(self, num_hosts: int, bias=False, **kwargs):
         super().__init__()
         self.num_hosts = torch.tensor(num_hosts)
         self.nUIV_x0 = nn.Parameter(torch.rand(3*self.num_hosts))  # initialize a random initial state
@@ -156,7 +156,7 @@ class nUIV_NODE(nn.Module):
         #tensor[2::3] = 10*torch.ones((self.num_hosts,))
         #self.nUIV_x0 = nn.Parameter(tensor)
         self.nUIV_dynamics = nUIV_rhs(self.num_hosts)  # initialize a random nUIV
-        self.nUIV_to_SIR = soft_threshold()
+        self.nUIV_to_SIR = soft_threshold(bias)
 
         self.parametrization = squared_parametrization()
         #self.parametrization = abs_parametrization()
